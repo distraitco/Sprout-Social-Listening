@@ -121,7 +121,7 @@ class SproutSlackCloudBot:
                 # Correct date format with .. (two dots for inclusive range) [[11]]
                 f"created_time.in({start_date_str}..{end_datetime_str})",
                 # REQUIRED: Network filter for Listening Messages API [[11]]
-                "network.eq(TWITTER,INSTAGRAM,FACEBOOK,YOUTUBE,LINKEDIN,REDDIT,TUMBLR,WWW,TIKTOK)"
+                "network.eq(TWITTER,INSTAGRAM,YOUTUBE,LINKEDIN)"
             ],
             "fields": [
                 "text",
