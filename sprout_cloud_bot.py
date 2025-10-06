@@ -263,7 +263,7 @@ class CloudSproutBot:
         signal.signal(signal.SIGINT, signal_handler)
         
         logger.info("🚀 Starting 24/7 cloud monitoring")
-        logger.info("📊 Checking every 15 minutes for new mentions")
+        logger.info("📊 Checking every 3 hours for new mentions")
         
         cycle_count = 0
         
@@ -282,8 +282,8 @@ class CloudSproutBot:
                     logger.info("📭 No new mentions found this cycle")
                 
                 # Wait 15 minutes before next cycle
-                logger.info("⏰ Waiting 15 minutes until next check...")
-                time.sleep(15 * 60)  # 15 minutes
+                logger.info("⏰ Waiting 3 hours until next check...")
+                time.sleep(3 * 60 * 60)  # 3 hours
                 
             except KeyboardInterrupt:
                 logger.info("👋 Monitoring stopped by user")
