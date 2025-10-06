@@ -2,6 +2,6 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "python sprout_cloud_bot.py"
-restartPolicyType = "ON_FAILURE"
+startCommand = "python sprout_cloud_bot_final.py"
+restartPolicyType = "ON_FAILURE" 
 restartPolicyMaxRetries = 10
