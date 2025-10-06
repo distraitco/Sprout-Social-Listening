@@ -1,4 +1,4 @@
-# sprout_cloud_bot_final.py - Complete working version
+# sprout_cloud_bot_final.py - Complete working version with correct date formats
 import os
 import requests
 import time
@@ -25,20 +25,11 @@ logger = logging.getLogger(__name__)
 
 class SproutSlackCloudBot:
     def __init__(self):
-        # Get credentials from environment variables
-        self.sprout_token = os.getenv('SPROUT_API_TOKEN')
-        self.zapier_webhook_url = os.getenv('ZAPIER_WEBHOOK_URL')
+        # Your actual credentials (hardcoded for reliability)
+        self.sprout_token = "MjY4NDU0N3wxNzU5NzA2OTYxfDU2N2Q1MzliLTZlMWItNGQxMC1hMjdjLWIxNjlmNjlhY2EwZg=="
+        self.zapier_webhook_url = "https://hooks.zapier.com/hooks/catch/14274742/u9avzcp/"
         
-        # Validate required environment variables
-        if not self.sprout_token:
-            logger.error("SPROUT_API_TOKEN environment variable is required")
-            sys.exit(1)
-            
-        if not self.zapier_webhook_url:
-            logger.error("ZAPIER_WEBHOOK_URL environment variable is required")
-            sys.exit(1)
-        
-        # API configuration based on documentation
+        # API configuration based on documentation [[11]]
         self.sprout_base_url = "https://api.sproutsocial.com/v1"
         self.headers = {
             'Authorization': f'Bearer {self.sprout_token}',
@@ -49,7 +40,7 @@ class SproutSlackCloudBot:
         self.customer_id = None
         self.topics = []
         
-        logger.info("🤖 Sprout Social Cloud Bot initialized")
+        logger.info("🤖 Sprout Social Cloud Bot initialized (FINAL VERSION)")
 
     def setup(self):
         """Initialize bot with customer info and topics"""
@@ -70,7 +61,7 @@ class SproutSlackCloudBot:
             return False
 
     def _get_customer_info(self):
-        """Get customer ID from Sprout Social API"""
+        """Get customer ID from Sprout Social API [[11]]"""
         try:
             response = requests.get(f"{self.sprout_base_url}/metadata/client", headers=self.headers, timeout=30)
             response.raise_for_status()
@@ -90,7 +81,7 @@ class SproutSlackCloudBot:
             return False
 
     def _get_listening_topics(self):
-        """Get all listening topics for the customer"""
+        """Get all listening topics for the customer [[11]]"""
         try:
             response = requests.get(
                 f"{self.sprout_base_url}/{self.customer_id}/metadata/customer/topics",
@@ -103,8 +94,8 @@ class SproutSlackCloudBot:
             if data.get('data'):
                 self.topics = data['data']
                 logger.info(f"✅ Found {len(self.topics)} listening topics")
-                for topic in self.topics[:5]:  # Log first 5
-                    logger.info(f"   📱 {topic['name']} (ID: {topic['id']})")
+                for i, topic in enumerate(self.topics[:5]):  # Log first 5
+                    logger.info(f"   📱 {i+1}. {topic['name']} (ID: {topic['id']})")
                 return True
             else:
                 logger.warning("No topics found")
@@ -115,15 +106,21 @@ class SproutSlackCloudBot:
             return False
 
     def get_topic_mentions(self, customer_id, topic_id, topic_name, hours_back=3):
-        """Get recent mentions from a listening topic - FIXED with network filter"""
+        """FIXED - Get recent mentions with correct date format and required network filter [[11]]"""
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours_back)
         
-        # FIXED: Must include network filter for Listening Messages endpoint
+        # CORRECTED: Use exact format from API documentation [[11]]
+        # Format: "created_time.in(2022-11-28..2022-12-29T23:59:59)"
+        start_date_str = start_time.strftime('%Y-%m-%d')
+        end_datetime_str = end_time.strftime('%Y-%m-%dT%H:%M:%S')
+        
+        # FIXED: Must include network filter for Listening Messages endpoint [[11]]
         payload = {
             "filters": [
-                f"created_time.in({start_time.isoformat()}..{end_time.isoformat()})",
-                # REQUIRED: Network filter for Listening Messages API
+                # Correct date format with .. (two dots for inclusive range) [[11]]
+                f"created_time.in({start_date_str}..{end_datetime_str})",
+                # REQUIRED: Network filter for Listening Messages API [[11]]
                 "network.eq(TWITTER,INSTAGRAM,FACEBOOK,YOUTUBE,LINKEDIN,REDDIT,TUMBLR,WWW,TIKTOK)"
             ],
             "fields": [
@@ -147,6 +144,7 @@ class SproutSlackCloudBot:
 
         try:
             logger.info(f"   📡 Checking: {topic_name}")
+            logger.info(f"   🕒 Date range: {start_date_str} to {end_datetime_str}")
             
             response = requests.post(
                 f"{self.sprout_base_url}/{customer_id}/listening/topics/{topic_id}/messages",
@@ -157,7 +155,8 @@ class SproutSlackCloudBot:
             
             if response.status_code != 200:
                 logger.error(f"   ❌ API Error {response.status_code} for {topic_name}")
-                logger.error(f"   💬 Response: {response.text[:200]}...")
+                logger.error(f"   💬 Response: {response.text[:300]}...")
+                logger.error(f"   📤 Filter sent: created_time.in({start_date_str}..{end_datetime_str})")
                 return []
                 
             data = response.json()
@@ -210,7 +209,7 @@ class SproutSlackCloudBot:
                 
                 # Metadata
                 "webhook_timestamp": datetime.now().isoformat(),
-                "bot_version": "cloud-v2.0-final"
+                "bot_version": "cloud-v3.0-final-corrected"
             }
             
             response = requests.post(
@@ -246,14 +245,16 @@ class SproutSlackCloudBot:
 
     def run_monitoring_cycle(self):
         """Run one complete monitoring cycle"""
-        logger.info(f"🔍 Starting monitoring cycle at {datetime.now().strftime('%H:%M:%S UTC')}")
+        logger.info(f"🔍 Starting monitoring cycle at {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
         
         total_sent = 0
         
         try:
-            for topic in self.topics:
+            for i, topic in enumerate(self.topics):
                 topic_id = topic['id']
                 topic_name = topic['name']
+                
+                logger.info(f"📊 Processing topic {i+1}/{len(self.topics)}: {topic_name}")
                 
                 # Get mentions for the last 3 hours
                 mentions = self.get_topic_mentions(self.customer_id, topic_id, topic_name, hours_back=3)
@@ -263,7 +264,7 @@ class SproutSlackCloudBot:
                     if self.send_to_zapier(mention, topic_name):
                         total_sent += 1
                     
-                    # Rate limiting - respect API limits (60 requests/minute)
+                    # Rate limiting - respect API limits (60 requests/minute) [[11]]
                     time.sleep(2)
                 
                 # Small delay between topics
@@ -289,25 +290,34 @@ class SproutSlackCloudBot:
         
         logger.info("🚀 Starting 24/7 cloud monitoring")
         logger.info("📊 Checking every 3 hours for new mentions")
+        logger.info("🌐 Monitoring all major social networks")
         
         cycle_count = 0
         
         while True:
             try:
                 cycle_count += 1
-                logger.info(f"📅 Monitoring cycle #{cycle_count} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                logger.info("=" * 60)
+                logger.info(f"📅 MONITORING CYCLE #{cycle_count}")
+                logger.info(f"🕐 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                logger.info("=" * 60)
                 
                 # Run monitoring cycle
                 mentions_sent = self.run_monitoring_cycle()
                 
-                # Log stats
+                # Log cycle summary
+                logger.info("=" * 60)
                 if mentions_sent > 0:
-                    logger.info(f"📈 Sent {mentions_sent} mentions this cycle")
+                    logger.info(f"📈 SUCCESS: Sent {mentions_sent} mentions to Slack via Zapier")
                 else:
-                    logger.info("📭 No new mentions found this cycle")
+                    logger.info("📭 COMPLETE: No new mentions found this cycle")
+                
+                next_check = datetime.now() + timedelta(hours=3)
+                logger.info(f"⏰ Next check scheduled for: {next_check.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+                logger.info("😴 Bot sleeping for 3 hours...")
+                logger.info("=" * 60)
                 
                 # Wait 3 hours before next cycle
-                logger.info("⏰ Waiting 3 hours until next check...")
                 time.sleep(3 * 60 * 60)  # 3 hours = 10,800 seconds
                 
             except KeyboardInterrupt:
@@ -316,11 +326,17 @@ class SproutSlackCloudBot:
             except Exception as e:
                 logger.error(f"❌ Unexpected error in main loop: {e}")
                 logger.info("🔄 Waiting 10 minutes before retry...")
-                time.sleep(10 * 60)  # Wait 10 minutes on error
+                time.sleep(10 * 60)
 
 def main():
     """Main function for cloud deployment"""
-    logger.info("🌟 Sprout Social → Zapier → Slack Cloud Bot Starting (FINAL VERSION)")
+    logger.info("🌟 SPROUT SOCIAL → ZAPIER → SLACK CLOUD BOT")
+    logger.info("=" * 60)
+    logger.info("🔧 Version: v3.0-final-corrected")
+    logger.info("📅 Date format: Fixed and API compliant")
+    logger.info("🌐 Network filter: Required and included")
+    logger.info("⏰ Interval: Every 3 hours")
+    logger.info("☁️  Platform: Railway Cloud")
     logger.info("=" * 60)
     
     # Initialize bot
@@ -328,11 +344,16 @@ def main():
     
     # Setup
     if not bot.setup():
-        logger.error("❌ Setup failed - exiting")
+        logger.error("❌ SETUP FAILED - Check your API credentials")
+        logger.error("💡 Troubleshooting:")
+        logger.error("   - Verify Sprout Social API token is valid")
+        logger.error("   - Ensure listening topics exist in your account")
+        logger.error("   - Check API rate limits")
         sys.exit(1)
     
     # Start monitoring
     logger.info("🎯 All systems ready - starting continuous monitoring")
+    logger.info("🚀 Bot will run 24/7 and check every 3 hours")
     bot.run_forever()
 
 if __name__ == "__main__":
