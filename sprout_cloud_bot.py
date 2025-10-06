@@ -1,4 +1,4 @@
-# sprout_cloud_bot_fixed.py - Updated with API fix
+# sprout_cloud_bot_final.py - Complete working version
 import os
 import requests
 import time
@@ -9,8 +9,10 @@ import json
 import signal
 import sys
 
+# Load environment variables
 load_dotenv()
 
+# Setup logging for cloud deployment
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -21,15 +23,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class CloudSproutBot:
+class SproutSlackCloudBot:
     def __init__(self):
+        # Get credentials from environment variables
         self.sprout_token = os.getenv('SPROUT_API_TOKEN')
-        self.zapier_webhook_url = os.getenv('ZAPIER_WEBHOOK_URL') 
+        self.zapier_webhook_url = os.getenv('ZAPIER_WEBHOOK_URL')
         
-        if not self.sprout_token or not self.zapier_webhook_url:
-            logger.error("Missing required environment variables")
+        # Validate required environment variables
+        if not self.sprout_token:
+            logger.error("SPROUT_API_TOKEN environment variable is required")
+            sys.exit(1)
+            
+        if not self.zapier_webhook_url:
+            logger.error("ZAPIER_WEBHOOK_URL environment variable is required")
             sys.exit(1)
         
+        # API configuration based on documentation
         self.sprout_base_url = "https://api.sproutsocial.com/v1"
         self.headers = {
             'Authorization': f'Bearer {self.sprout_token}',
@@ -40,17 +49,22 @@ class CloudSproutBot:
         self.customer_id = None
         self.topics = []
         
-        logger.info("🤖 Cloud Sprout Bot initialized")
+        logger.info("🤖 Sprout Social Cloud Bot initialized")
 
     def setup(self):
         """Initialize bot with customer info and topics"""
         try:
+            # Get customer info
             if not self._get_customer_info():
                 return False
+                
+            # Get listening topics
             if not self._get_listening_topics():
                 return False
+                
             logger.info(f"✅ Setup complete - monitoring {len(self.topics)} topics")
             return True
+            
         except Exception as e:
             logger.error(f"❌ Setup failed: {e}")
             return False
@@ -70,6 +84,7 @@ class CloudSproutBot:
             else:
                 logger.error("No customer data found")
                 return False
+                
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to get customer info: {e}")
             return False
@@ -88,26 +103,28 @@ class CloudSproutBot:
             if data.get('data'):
                 self.topics = data['data']
                 logger.info(f"✅ Found {len(self.topics)} listening topics")
-                for topic in self.topics[:3]:
-                    logger.info(f"   📱 {topic['name']}")
+                for topic in self.topics[:5]:  # Log first 5
+                    logger.info(f"   📱 {topic['name']} (ID: {topic['id']})")
                 return True
             else:
                 logger.warning("No topics found")
                 return False
+                
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to get topics: {e}")
             return False
 
-    def get_topic_mentions(self, customer_id, topic_id, topic_name, hours_back=1):
-        """FIXED - Get recent mentions from a listening topic"""
+    def get_topic_mentions(self, customer_id, topic_id, topic_name, hours_back=3):
+        """Get recent mentions from a listening topic - FIXED with network filter"""
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours_back)
         
-        # Fixed payload format based on API documentation
+        # FIXED: Must include network filter for Listening Messages endpoint
         payload = {
             "filters": [
-                # Use .. (two dots) for inclusive range, not ... (three dots)
-                f"created_time.in({start_time.isoformat()}..{end_time.isoformat()})"
+                f"created_time.in({start_time.isoformat()}..{end_time.isoformat()})",
+                # REQUIRED: Network filter for Listening Messages API
+                "network.eq(TWITTER,INSTAGRAM,FACEBOOK,YOUTUBE,LINKEDIN,REDDIT,TUMBLR,WWW,TIKTOK)"
             ],
             "fields": [
                 "text",
@@ -117,21 +134,19 @@ class CloudSproutBot:
                 "perma_link", 
                 "created_time",
                 "sentiment",
-                "hashtags",
-                "guid"
+                "hashtags"
             ],
             "metrics": [
                 "likes",
                 "shares_count", 
                 "replies"
             ],
-            "limit": 10,  # Start small for testing
+            "limit": 25,  # Reasonable limit for cloud processing
             "sort": ["created_time:desc"]
         }
 
         try:
             logger.info(f"   📡 Checking: {topic_name}")
-            logger.info(f"   🕒 Time range: {start_time.strftime('%H:%M')} to {end_time.strftime('%H:%M')}")
             
             response = requests.post(
                 f"{self.sprout_base_url}/{customer_id}/listening/topics/{topic_id}/messages",
@@ -165,30 +180,44 @@ class CloudSproutBot:
     def send_to_zapier(self, mention, topic_name):
         """Send mention data to Zapier webhook"""
         try:
+            # Get metrics safely
             metrics = mention.get('metrics', {})
             
+            # Create webhook payload
             webhook_data = {
+                # Basic info
                 "topic_name": topic_name,
                 "created_time": mention.get('created_time', ''),
+                
+                # Author info
                 "author_name": mention.get('from', {}).get('name', 'Unknown'),
                 "author_handle": mention.get('from', {}).get('screen_name', 'unknown'),
                 "network": mention.get('network', 'Unknown'),
-                "message_text": mention.get('text', 'No content')[:400],
+                
+                # Content
+                "message_text": mention.get('text', 'No content')[:500],  # Limit length
                 "sentiment": mention.get('sentiment', 'unknown'),
                 "hashtags": ', '.join(mention.get('hashtags', [])[:5]),
+                
+                # Engagement metrics
                 "likes": metrics.get('likes', 0),
                 "replies": metrics.get('replies', 0),
                 "shares": metrics.get('shares_count', 0),
+                
+                # Links and priority
                 "permalink": mention.get('perma_link', ''),
                 "priority": self._get_priority(mention, metrics),
+                
+                # Metadata
                 "webhook_timestamp": datetime.now().isoformat(),
-                "bot_version": "cloud-v1.1-fixed"
+                "bot_version": "cloud-v2.0-final"
             }
             
             response = requests.post(
                 self.zapier_webhook_url, 
                 json=webhook_data, 
-                timeout=30
+                timeout=30,
+                headers={'Content-Type': 'application/json'}
             )
             response.raise_for_status()
             
@@ -208,9 +237,9 @@ class CloudSproutBot:
             return 'URGENT'
         elif sentiment == 'negative':
             return 'HIGH'
-        elif total_engagement > 25:
+        elif total_engagement > 50:
             return 'HIGH'
-        elif total_engagement > 5:
+        elif total_engagement > 10:
             return 'MEDIUM' 
         else:
             return 'LOW'
@@ -226,16 +255,19 @@ class CloudSproutBot:
                 topic_id = topic['id']
                 topic_name = topic['name']
                 
-                # Get mentions
+                # Get mentions for the last 3 hours
                 mentions = self.get_topic_mentions(self.customer_id, topic_id, topic_name, hours_back=3)
                 
                 # Send each mention to Zapier
                 for mention in mentions:
                     if self.send_to_zapier(mention, topic_name):
                         total_sent += 1
-                    time.sleep(2)  # Rate limiting
+                    
+                    # Rate limiting - respect API limits (60 requests/minute)
+                    time.sleep(2)
                 
-                time.sleep(1)  # Small delay between topics
+                # Small delay between topics
+                time.sleep(1)
             
             logger.info(f"✨ Cycle complete! Sent {total_sent} mentions to Zapier")
             return total_sent
@@ -245,7 +277,9 @@ class CloudSproutBot:
             return 0
 
     def run_forever(self):
-        """Run continuous monitoring"""
+        """Run continuous monitoring with proper cloud handling"""
+        
+        # Setup signal handlers for graceful shutdown
         def signal_handler(signum, frame):
             logger.info("🛑 Received shutdown signal - stopping gracefully")
             sys.exit(0)
@@ -254,43 +288,51 @@ class CloudSproutBot:
         signal.signal(signal.SIGINT, signal_handler)
         
         logger.info("🚀 Starting 24/7 cloud monitoring")
-        logger.info("📊 Checking every 3 hours for new mentions")  # Updated message
+        logger.info("📊 Checking every 3 hours for new mentions")
         
         cycle_count = 0
         
         while True:
             try:
                 cycle_count += 1
-                logger.info(f"📅 Monitoring cycle #{cycle_count}")
+                logger.info(f"📅 Monitoring cycle #{cycle_count} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
                 
+                # Run monitoring cycle
                 mentions_sent = self.run_monitoring_cycle()
                 
+                # Log stats
                 if mentions_sent > 0:
                     logger.info(f"📈 Sent {mentions_sent} mentions this cycle")
                 else:
                     logger.info("📭 No new mentions found this cycle")
                 
+                # Wait 3 hours before next cycle
                 logger.info("⏰ Waiting 3 hours until next check...")
-                time.sleep(3 * 60 * 60)  # 3 hours
+                time.sleep(3 * 60 * 60)  # 3 hours = 10,800 seconds
                 
             except KeyboardInterrupt:
                 logger.info("👋 Monitoring stopped by user")
                 break
             except Exception as e:
                 logger.error(f"❌ Unexpected error in main loop: {e}")
-                logger.info("🔄 Waiting 5 minutes before retry...")
-                time.sleep(5 * 60)
+                logger.info("🔄 Waiting 10 minutes before retry...")
+                time.sleep(10 * 60)  # Wait 10 minutes on error
 
 def main():
     """Main function for cloud deployment"""
-    logger.info("🌟 Sprout Social → Zapier → Slack Cloud Bot Starting (FIXED VERSION)")
+    logger.info("🌟 Sprout Social → Zapier → Slack Cloud Bot Starting (FINAL VERSION)")
+    logger.info("=" * 60)
     
-    bot = CloudSproutBot()
+    # Initialize bot
+    bot = SproutSlackCloudBot()
     
+    # Setup
     if not bot.setup():
         logger.error("❌ Setup failed - exiting")
         sys.exit(1)
     
+    # Start monitoring
+    logger.info("🎯 All systems ready - starting continuous monitoring")
     bot.run_forever()
 
 if __name__ == "__main__":
